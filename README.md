@@ -39,3 +39,29 @@ npm run build
 npm run preview
 ```
 产物在 `dist/` 目录下，可直接放置于任何 Web 服务器（Nginx、Caddy、Apache、Docker 或静态托管平台）中运行。
+
+---
+
+## 🖥️ 编译打包 Windows / macOS / Linux 桌面原生应用 (.exe)
+
+本项目已支持 **Tauri v2**，可一键将应用编译为超轻量（仅 ~15MB，内存占用仅 ~30MB）的原生桌面客户端。
+
+### Windows 打包前置环境（仅需准备一次）
+1. 安装 **Rust**：访问 [https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install) 下载运行 `rustup-init.exe`。
+2. 安装 **C++ 生成工具**（Visual Studio Build Tools，勾选 "C++ 桌面开发"）。
+3. 安装 **WebView2 运行时**（Windows 10 / 11 绝大多数电脑已自带）。
+
+### 编译打包命令
+在项目根目录下执行：
+```bash
+# 1. 编译前端静态资源
+npm run build
+
+# 2. 调用 Tauri 编译生成原生 .exe / .msi 安装包
+npx @tauri-apps/cli build
+```
+编译成功后，原生安装包将生成在：
+`src-tauri/target/release/bundle/nsis/NodePulse_1.0.0_x64-setup.exe`
+或便携版：
+`src-tauri/target/release/NodePulse.exe`
+
