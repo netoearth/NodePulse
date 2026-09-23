@@ -393,6 +393,15 @@ export default function App() {
           />
         )}
 
+        {/* Egress IP, ASN & Routing Telemetry (前置至就绪测试看板下方) */}
+        {(currentMode === 'full' || currentMode === 'unlock') && (
+          <EgressInspector
+            egress={egress}
+            isLoading={isEgressLoading}
+            onRefresh={loadEgressData}
+          />
+        )}
+
         {/* Latency & Packet Loss Visualizer (Highlighted by user: 一键检测延迟与丢包率并支持动画显示) */}
         {(currentMode === 'full' || currentMode === 'quick-ping') && (
           <PacketLossVisualizer
@@ -400,15 +409,6 @@ export default function App() {
             stats={latencyStats}
             isTesting={isRunning && currentStage === 'ping'}
             onRunTest={handleRunPacketBurst}
-          />
-        )}
-
-        {/* Egress IP, ASN & Routing Telemetry */}
-        {(currentMode === 'full' || currentMode === 'unlock') && (
-          <EgressInspector
-            egress={egress}
-            isLoading={isEgressLoading}
-            onRefresh={loadEgressData}
           />
         )}
 
