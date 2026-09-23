@@ -1,0 +1,14 @@
+{
+  "appId": "com.nodepulse.speedtrace",
+  "appName": "NodePulse",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#0a0a0a"
+  }
+}
