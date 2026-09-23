@@ -1,0 +1,6 @@
+{
+  "name": "NodePulse - 代理网络测速与出口诊断工具",
+  "description": "专业的网络代理速度测试、全球路由节点延迟与丢包率诊断、出口IP与流媒体解锁检测工具，媲美 speed.cloudflare.com 的精美交互式分析仪表盘。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
