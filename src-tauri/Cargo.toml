@@ -5,6 +5,7 @@ description = "NodePulse Cross-Platform Network Diagnostics"
 authors = ["NodePulse Team"]
 license = "MIT"
 edition = "2021"
+build = "build.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
