@@ -133,7 +133,11 @@ jobs:
       # 跨平台强制 Rebuild 原生绑定，确保 macOS ARM64 / Windows / Linux 均能加载 .node 模块
       - name: 🔧 Rebuild native modules
         run: |
-          rm -rf node_modules/.tailwindcss/oxide-cache node_modules/.vite || true
+          if ("${{ matrix.shell }}" -eq "pwsh") {
+            Remove-Item -Recurse -Force -Path "node_modules/.tailwindcss/oxide-cache", "node_modules/.vite" -ErrorAction SilentlyContinue
+          } else {
+            rm -rf node_modules/.tailwindcss/oxide-cache node_modules/.vite || true
+          }
           npm rebuild @tailwindcss/oxide lightningcss || true
 
       - name: 🏗️ Build production bundle (Vite)
