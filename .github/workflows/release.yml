@@ -114,7 +114,13 @@ jobs:
           else
             npm install --legacy-peer-deps
           fi
-          npm rebuild @tailwindcss/oxide lightningcss || true
+
+          # macOS (Apple Silicon arm64) 显式安装 Rolldown 原生绑定
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            npm install @rolldown/binding-darwin-arm64 --no-save --legacy-peer-deps --force || true
+          fi
+
+          npm rebuild @tailwindcss/oxide lightningcss rolldown || true
 
       # Windows 依赖安装
       - name: 📦 Install dependencies (Windows)
@@ -133,7 +139,14 @@ jobs:
             npm install --legacy-peer-deps
           }
 
-          try { npm rebuild @tailwindcss/oxide lightningcss --verbose } catch { Write-Host "rebuild oxide/lightningcss skipped" }
+          # 显式安装 Windows 平台的 Rolldown 原生绑定 (解决 Vite 8 在 Windows 上缺失 @rolldown/binding-win32-x64-msvc 的问题)
+          try {
+            npm install @rolldown/binding-win32-x64-msvc --no-save --legacy-peer-deps --force
+          } catch {
+            Write-Host "⚠️ Notice: Failed to install @rolldown/binding-win32-x64-msvc with --force"
+          }
+
+          try { npm rebuild @tailwindcss/oxide lightningcss rolldown --verbose } catch { Write-Host "rebuild oxide/lightningcss/rolldown skipped" }
           try { npm rebuild --platform=win32 --arch=x64 } catch { Write-Host "rebuild win32 skipped" }
 
       # 跨平台强制 Rebuild 原生绑定
@@ -142,14 +155,15 @@ jobs:
         shell: bash
         run: |
           rm -rf node_modules/.tailwindcss/oxide-cache node_modules/.vite || true
-          npm rebuild @tailwindcss/oxide lightningcss || true
+          npm rebuild @tailwindcss/oxide lightningcss rolldown || true
+          npm rebuild rolldown --force || true
 
       - name: 🔧 Rebuild native modules (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force -Path "node_modules/.tailwindcss/oxide-cache", "node_modules/.vite" -ErrorAction SilentlyContinue
-          npm rebuild @tailwindcss/oxide lightningcss || $true
+          try { npm rebuild @tailwindcss/oxide lightningcss rolldown } catch { Write-Host "rebuild native modules skipped" }
 
       - name: 🏗️ Build production bundle (Vite)
         run: npm run build
