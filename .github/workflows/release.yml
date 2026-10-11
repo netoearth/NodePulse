@@ -139,11 +139,18 @@ jobs:
             npm install --legacy-peer-deps
           }
 
-          # 显式安装 Windows 平台的 Rolldown 原生绑定 (解决 Vite 8 在 Windows 上缺失 @rolldown/binding-win32-x64-msvc 的问题)
+          # 显式安装 Windows 平台的原生绑定 (解决 Vite 8 / Tailwind v4 在 Windows 缺失原生 .node 模块的问题)
           try {
             npm install @rolldown/binding-win32-x64-msvc --no-save --legacy-peer-deps --force
           } catch {
             Write-Host "⚠️ Notice: Failed to install @rolldown/binding-win32-x64-msvc with --force"
+          }
+
+          try {
+            npm install lightningcss lightningcss-win32-x64-msvc @tailwindcss/oxide-win32-x64-msvc --no-save --legacy-peer-deps --force
+          } catch {
+            Write-Host "⚠️ Notice: Failed to install lightningcss native bindings with --force, trying lightningcss only..."
+            try { npm install lightningcss --no-save --legacy-peer-deps --force } catch { Write-Host "lightningcss fallback finished" }
           }
 
           try { npm rebuild @tailwindcss/oxide lightningcss rolldown --verbose } catch { Write-Host "rebuild oxide/lightningcss/rolldown skipped" }
