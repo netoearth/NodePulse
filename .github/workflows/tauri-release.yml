@@ -3,58 +3,101 @@ name: 🚀 Tauri v2 Desktop Cross-Platform Release
 on:
   push:
     tags:
+      - 'v*.*.*'
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '发布版本号 Tag (例如: v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      release_title:
+        description: 'Release 标题'
+        required: false
+        default: 'NodePulse Desktop Client'
+      is_prerelease:
+        description: '是否为预发布版本 (Pre-release)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
-  packages: write
-  issues: write
 
 jobs:
-  release-desktop:
-    name: Build & Release Desktop Apps
+  pre-check:
+    name: 🔍 Pre-check & Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js (22 LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 📦 Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || npm install --legacy-peer-deps
+          else
+            npm install --legacy-peer-deps
+          fi
+
+      - name: 🔍 Type check
+        run: npm run lint
+
+  build-tauri:
+    name: 📦 Build (${{ matrix.platform-name }})
+    needs: pre-check
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
       packages: write
-      issues: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: 'windows-latest'
-            args: ''
-            target: ''
-          - platform: 'macos-latest'
-            args: '--target universal-apple-darwin'
-            target: 'universal-apple-darwin'
-          - platform: 'ubuntu-22.04'
-            args: ''
-            target: ''
+          - os: macos-latest
+            platform-name: macOS-Universal
+            rust-targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+            tauri-args: '--target universal-apple-darwin'
 
-    runs-on: ${{ matrix.platform }}
+          - os: ubuntu-22.04
+            platform-name: Linux-x64
+            rust-targets: 'x86_64-unknown-linux-gnu'
+            tauri-args: ''
+
+          - os: windows-latest
+            platform-name: Windows-x64
+            rust-targets: 'x86_64-pc-windows-msvc'
+            tauri-args: ''
 
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: ⚙️ Setup Node.js (22 LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
-      - name: Install Rust stable
+      - name: 🦀 Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target == 'universal-apple-darwin' && 'x86_64-apple-darwin,aarch64-apple-darwin' || '' }}
+          targets: ${{ matrix.rust-targets }}
 
-      - name: Rust Cache
+      - name: ⚡ Rust Cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install Linux dependencies (Tauri v2 requires WebKit2GTK 4.1)
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: 🐧 Install Linux system dependencies (WebKit2GTK 4.1 for Tauri v2)
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -69,33 +112,33 @@ jobs:
             libssl-dev \
             libgtk-3-dev
 
-      - name: Install Node dependencies
+      - name: 📦 Install Node dependencies
         shell: bash
         run: |
           rm -rf package-lock.json node_modules
-          npm install --include=optional
+          npm install --include=optional --legacy-peer-deps
 
-      - name: Build Web Frontend
+      - name: 🏗️ Build Web Frontend
         run: npm run build
 
-      - name: Build Tauri Desktop Bundle
+      - name: 🚀 Build and Release Tauri Desktop Bundle
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'NodePulse Desktop ${{ github.ref_name }}'
+          tagName: ${{ github.event.inputs.tag_name || github.ref_name }}
+          releaseName: '${{ github.event.inputs.release_title || 'NodePulse Desktop Client' }} ${{ github.event.inputs.tag_name || github.ref_name }}'
           releaseBody: |
-            ## 🚀 NodePulse 原生桌面客户端发布 (${{ github.ref_name }})
-            
-            本版本为基于 Tauri v2 构建的跨平台高性能桌面应用，拥有超低内存占用与系统原生加速。
+            ## 🚀 NodePulse 原生桌面客户端发布 (${{ github.event.inputs.tag_name || github.ref_name }})
 
-            ### 📦 包含平台架构安装包：
-            - **Windows**: `.exe` (NSIS 安装包) 与 `.msi`
-            - **macOS (Universal Binary)**: `.dmg` 与 `.app` (原生同时支持 Apple Silicon M1/M2/M3/M4 及 Intel x86_64)
-            - **Linux**: `.AppImage` (免安装便携版) 与 `.deb` (Debian/Ubuntu 软件包，依赖 webkit2gtk-4.1)
-            
-            *构建触发时间: ${{ github.event.head_commit.timestamp || 'Manual Dispatch' }}*
+            本版本为基于 Tauri v2 构建的跨平台高性能桌面应用，拥有超低内存占用与系统原生硬件加速。
+
+            ### 📦 包含平台安装包 (macOS Universal DMG, Windows MSI/EXE, Linux DEB/AppImage):
+            - **Windows (x64)**: `.exe` (NSIS 安装包) 与 `.msi` (Windows Installer)
+            - **macOS (Universal Binary)**: `.dmg` 与 `.app` (原生兼容 Apple Silicon M1/M2/M3/M4 及 Intel x86_64)
+            - **Linux (x64)**: `.AppImage` (免安装便携版) 与 `.deb` (Debian/Ubuntu 软件包，依赖 webkit2gtk-4.1)
+
+            *构建触发: ${{ github.event.head_commit.timestamp || 'Manual Dispatch' }}*
           releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+          prerelease: ${{ github.event.inputs.is_prerelease || false }}
+          args: ${{ matrix.tauri-args }}
