@@ -42,11 +42,8 @@ jobs:
       - name: 📦 Install dependencies
         shell: bash
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci || npm install --legacy-peer-deps
-          else
-            npm install --legacy-peer-deps
-          fi
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: 🔍 Type check
         run: npm run lint

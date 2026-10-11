@@ -44,11 +44,8 @@ jobs:
 
       - name: 📦 Install dependencies
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci || npm install --legacy-peer-deps
-          else
-            npm install --legacy-peer-deps
-          fi
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: 🔍 Type check (tsc --noEmit)
         run: npm run lint
@@ -95,40 +92,23 @@ jobs:
         with:
           node-version: 22
 
-      # Linux / macOS 依赖安装 (包含 macOS ARM64 原生模块重建)
+      # Linux / macOS 依赖安装 (清理旧缓存与跨平台 lockfile，针对当前平台全新解析 native bindings)
       - name: 📦 Install dependencies (Unix)
         if: matrix.shell == 'bash'
         run: |
-          if [ -f package-lock.json ]; then
-            if ! npm ci; then
-              echo "⚠️ npm ci failed, falling back to clean npm install..."
-              rm -rf node_modules package-lock.json
-              npm install --legacy-peer-deps
-            fi
-          else
-            npm install --legacy-peer-deps
-          fi
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps --no-audit --no-fund
           npm rebuild @tailwindcss/oxide lightningcss || true
 
-      # Windows 依赖安装 (全平台已锁定在 package-lock.json)
+      # Windows 依赖安装 (清理旧缓存与跨平台 lockfile，针对 Windows 原生编译并完整解析 rolldown/oxide/lightningcss 绑定)
       - name: 📦 Install dependencies (Windows)
         if: matrix.shell == 'pwsh'
+        shell: pwsh
         run: |
-          if (Test-Path "package-lock.json") {
-            try {
-              npm ci
-            } catch {
-              Write-Host "⚠️ npm ci failed, falling back to clean npm install..."
-              Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
-              npm install --legacy-peer-deps
-            }
-          } else {
-            npm install --legacy-peer-deps
-          }
-
-          # 强制补齐与重建 Windows x64 原生模块，防止缺失 lightningcss 或 oxide 原生模块
-          try { npm rebuild @tailwindcss/oxide lightningcss --verbose } catch { Write-Host "rebuild oxide/lightningcss skipped" }
-          try { npm rebuild --platform=win32 --arch=x64 } catch { Write-Host "rebuild win32 skipped" }
+          Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm rebuild @tailwindcss/oxide lightningcss --verbose
+          npm rebuild --platform=win32 --arch=x64 --verbose
 
       # 清理缓存并重建原生模块 (Unix)
       - name: 🔧 Clear cache (Unix)
