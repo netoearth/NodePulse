@@ -7,9 +7,6 @@ import { RouteNodeMatrix } from './components/RouteNodeMatrix';
 import { StreamingUnlockProbe } from './components/StreamingUnlockProbe';
 import { DiagnosticReportModal } from './components/DiagnosticReportModal';
 import { CustomTargetModal } from './components/CustomTargetModal';
-import { CrossPlatformModal } from './components/CrossPlatformModal';
-import { InstallBanner } from './components/InstallBanner';
-import { usePWA } from './hooks/usePWA';
 import {
   DiagnosticMode,
   EgressInfo,
@@ -85,10 +82,6 @@ export default function App() {
   // Modals
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isCustomTargetOpen, setIsCustomTargetOpen] = useState(false);
-  const [isCrossPlatformOpen, setIsCrossPlatformOpen] = useState(false);
-
-  // Cross-Platform PWA & OS detection
-  const { canInstall, isInstalled, currentOS, triggerInstall } = usePWA();
 
   // Abort controller reference for stopping tests
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -362,19 +355,6 @@ export default function App() {
         onStart={handleStartFullDiagnostic}
         onStop={handleStop}
         onOpenReport={() => setIsReportOpen(true)}
-        onOpenCrossPlatform={() => setIsCrossPlatformOpen(true)}
-        currentOS={currentOS}
-        canInstall={canInstall}
-        isInstalled={isInstalled}
-      />
-
-      {/* Multi-Platform PWA Install Banner */}
-      <InstallBanner
-        canInstall={canInstall}
-        isInstalled={isInstalled}
-        currentOS={currentOS}
-        onInstall={triggerInstall}
-        onOpenDetails={() => setIsCrossPlatformOpen(true)}
       />
 
       {/* Main Container */}
@@ -459,37 +439,11 @@ export default function App() {
       {/* Footer */}
       <footer className="w-full border-t border-neutral-800/80 py-5 text-center text-xs text-neutral-500 bg-neutral-950/60">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="flex items-center gap-3">
             <span>NodePulse · 代理网络与全球出口链路高精度诊断平台</span>
-            <div className="flex items-center gap-1.5 text-[11px]">
-              <button
-                onClick={() => setIsCrossPlatformOpen(true)}
-                className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-cyan-300 hover:border-neutral-700 transition-colors"
-              >
-                🤖 Android
-              </button>
-              <button
-                onClick={() => setIsCrossPlatformOpen(true)}
-                className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-cyan-300 hover:border-neutral-700 transition-colors"
-              >
-                🪟 Windows
-              </button>
-              <button
-                onClick={() => setIsCrossPlatformOpen(true)}
-                className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-cyan-300 hover:border-neutral-700 transition-colors"
-              >
-                🍏 macOS
-              </button>
-              <button
-                onClick={() => setIsCrossPlatformOpen(true)}
-                className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-cyan-300 hover:border-neutral-700 transition-colors"
-              >
-                🐧 Linux
-              </button>
-            </div>
           </div>
           <span className="font-mono text-[11px] text-neutral-600">
-            Multi-Platform PWA & Tauri Native Packaging Ready · RFC 3550
+            RFC 3550 Network Telemetry & Diagnostic Suite
           </span>
         </div>
       </footer>
@@ -512,15 +466,6 @@ export default function App() {
         isOpen={isCustomTargetOpen}
         onClose={() => setIsCustomTargetOpen(false)}
         onAddPreset={handleAddCustomTarget}
-      />
-
-      <CrossPlatformModal
-        isOpen={isCrossPlatformOpen}
-        onClose={() => setIsCrossPlatformOpen(false)}
-        currentOS={currentOS}
-        canInstall={canInstall}
-        isInstalled={isInstalled}
-        onInstall={triggerInstall}
       />
     </div>
   );

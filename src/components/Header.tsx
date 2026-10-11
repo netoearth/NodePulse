@@ -7,14 +7,11 @@ import {
   ShieldCheck,
   Zap,
   FileText,
-  Smartphone,
-  Monitor,
   Maximize2,
   Minimize2,
   Sparkles,
 } from 'lucide-react';
 import { DiagnosticMode } from '../types';
-import { OSPlatform } from '../hooks/usePWA';
 
 interface HeaderProps {
   currentMode: DiagnosticMode;
@@ -23,10 +20,6 @@ interface HeaderProps {
   onStart: () => void;
   onStop: () => void;
   onOpenReport: () => void;
-  onOpenCrossPlatform: () => void;
-  currentOS?: OSPlatform;
-  canInstall?: boolean;
-  isInstalled?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -36,10 +29,6 @@ export const Header: React.FC<HeaderProps> = ({
   onStart,
   onStop,
   onOpenReport,
-  onOpenCrossPlatform,
-  currentOS = 'unknown',
-  canInstall = false,
-  isInstalled = false,
 }) => {
   const [isFullscreen, setIsFullscreen] = React.useState(false);
 
@@ -51,13 +40,6 @@ export const Header: React.FC<HeaderProps> = ({
       document.exitFullscreen().catch(() => {});
       setIsFullscreen(false);
     }
-  };
-
-  const getOsIcon = () => {
-    if (currentOS === 'android' || currentOS === 'ios') {
-      return <Smartphone className="h-3.5 w-3.5 text-cyan-400" />;
-    }
-    return <Monitor className="h-3.5 w-3.5 text-cyan-400" />;
   };
 
   return (
@@ -126,28 +108,6 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Zone 3: Primary Actions */}
         <div className="flex items-center gap-2">
-          {/* Cross-Platform Release & Install Button */}
-          <button
-            onClick={onOpenCrossPlatform}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all whitespace-nowrap active:scale-95 ${
-              canInstall && !isInstalled
-                ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 hover:bg-cyan-900/60'
-                : 'bg-neutral-900/90 border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800'
-            }`}
-            title="跨平台客户端发布与安装 (Android, Windows, Linux, macOS)"
-          >
-            {getOsIcon()}
-            <span>跨平台客户端</span>
-            {canInstall && !isInstalled ? (
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-              </span>
-            ) : (
-              <span className="text-[10px] text-neutral-400 hidden sm:inline">多端</span>
-            )}
-          </button>
-
           {/* Diagnostic Report Button */}
           <button
             onClick={onOpenReport}

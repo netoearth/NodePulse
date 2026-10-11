@@ -8,12 +8,16 @@ on:
 
 permissions:
   contents: write
+  packages: write
+  issues: write
 
 jobs:
   release-desktop:
     name: Build & Release Desktop Apps
     permissions:
       contents: write
+      packages: write
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -69,7 +73,7 @@ jobs:
         shell: bash
         run: |
           rm -rf package-lock.json node_modules
-          npm install
+          npm install --include=optional
 
       - name: Build Web Frontend
         run: npm run build
