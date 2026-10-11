@@ -100,11 +100,11 @@ jobs:
         if: matrix.shell == 'bash'
         run: |
           if [ -f package-lock.json ]; then
-            npm ci || {
+            if ! npm ci; then
               echo "⚠️ npm ci failed, falling back to clean npm install..."
               rm -rf node_modules package-lock.json
               npm install --legacy-peer-deps
-            }
+            fi
           else
             npm install --legacy-peer-deps
           fi
@@ -130,14 +130,18 @@ jobs:
           try { npm rebuild @tailwindcss/oxide lightningcss --verbose } catch { Write-Host "rebuild oxide/lightningcss skipped" }
           try { npm rebuild --platform=win32 --arch=x64 } catch { Write-Host "rebuild win32 skipped" }
 
-      # 跨平台强制 Rebuild 原生绑定，确保 macOS ARM64 / Windows / Linux 均能加载 .node 模块
-      - name: 🔧 Rebuild native modules
+      # 清理缓存并重建原生模块 (Unix)
+      - name: 🔧 Clear cache (Unix)
+        if: matrix.shell == 'bash'
         run: |
-          if ("${{ matrix.shell }}" -eq "pwsh") {
-            Remove-Item -Recurse -Force -Path "node_modules/.tailwindcss/oxide-cache", "node_modules/.vite" -ErrorAction SilentlyContinue
-          } else {
-            rm -rf node_modules/.tailwindcss/oxide-cache node_modules/.vite || true
-          }
+          rm -rf node_modules/.tailwindcss/oxide-cache node_modules/.vite || true
+          npm rebuild @tailwindcss/oxide lightningcss || true
+
+      # 清理缓存并重建原生模块 (Windows)
+      - name: 🔧 Clear cache (Windows)
+        if: matrix.shell == 'pwsh'
+        run: |
+          Remove-Item -Recurse -Force -Path "node_modules/.tailwindcss/oxide-cache", "node_modules/.vite" -ErrorAction SilentlyContinue
           npm rebuild @tailwindcss/oxide lightningcss || true
 
       - name: 🏗️ Build production bundle (Vite)
