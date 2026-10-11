@@ -43,9 +43,17 @@ jobs:
           node-version: 22
 
       - name: 📦 Install dependencies
+        shell: bash
         run: |
-          rm -rf node_modules package-lock.json
-          npm install --legacy-peer-deps --no-audit --no-fund
+          if [ -f package-lock.json ]; then
+            if ! npm ci; then
+              echo "⚠️ npm ci failed, falling back to clean npm install..."
+              rm -rf node_modules package-lock.json
+              npm install --legacy-peer-deps
+            fi
+          else
+            npm install --legacy-peer-deps
+          fi
 
       - name: 🔍 Type check (tsc --noEmit)
         run: npm run lint
@@ -92,37 +100,56 @@ jobs:
         with:
           node-version: 22
 
-      # Linux / macOS 依赖安装 (清理旧缓存与跨平台 lockfile，针对当前平台全新解析 native bindings)
+      # Linux / macOS 依赖安装
       - name: 📦 Install dependencies (Unix)
-        if: matrix.shell == 'bash'
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
-          rm -rf node_modules package-lock.json
-          npm install --legacy-peer-deps --no-audit --no-fund
+          if [ -f package-lock.json ]; then
+            if ! npm ci; then
+              echo "⚠️ npm ci failed, falling back to clean npm install..."
+              rm -rf node_modules package-lock.json
+              npm install --legacy-peer-deps
+            fi
+          else
+            npm install --legacy-peer-deps
+          fi
           npm rebuild @tailwindcss/oxide lightningcss || true
 
-      # Windows 依赖安装 (清理旧缓存与跨平台 lockfile，针对 Windows 原生编译并完整解析 rolldown/oxide/lightningcss 绑定)
+      # Windows 依赖安装
       - name: 📦 Install dependencies (Windows)
-        if: matrix.shell == 'pwsh'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
-          npm install --legacy-peer-deps --no-audit --no-fund
-          npm rebuild @tailwindcss/oxide lightningcss --verbose
-          npm rebuild --platform=win32 --arch=x64 --verbose
+          if (Test-Path "package-lock.json") {
+            try {
+              npm ci
+            } catch {
+              Write-Host "⚠️ npm ci failed, falling back to clean npm install..."
+              Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
+              npm install --legacy-peer-deps
+            }
+          } else {
+            npm install --legacy-peer-deps
+          }
 
-      # 清理缓存并重建原生模块 (Unix)
-      - name: 🔧 Clear cache (Unix)
-        if: matrix.shell == 'bash'
+          try { npm rebuild @tailwindcss/oxide lightningcss --verbose } catch { Write-Host "rebuild oxide/lightningcss skipped" }
+          try { npm rebuild --platform=win32 --arch=x64 } catch { Write-Host "rebuild win32 skipped" }
+
+      # 跨平台强制 Rebuild 原生绑定
+      - name: 🔧 Rebuild native modules (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           rm -rf node_modules/.tailwindcss/oxide-cache node_modules/.vite || true
           npm rebuild @tailwindcss/oxide lightningcss || true
 
-      # 清理缓存并重建原生模块 (Windows)
-      - name: 🔧 Clear cache (Windows)
-        if: matrix.shell == 'pwsh'
+      - name: 🔧 Rebuild native modules (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
           Remove-Item -Recurse -Force -Path "node_modules/.tailwindcss/oxide-cache", "node_modules/.vite" -ErrorAction SilentlyContinue
-          npm rebuild @tailwindcss/oxide lightningcss || true
+          npm rebuild @tailwindcss/oxide lightningcss || $true
 
       - name: 🏗️ Build production bundle (Vite)
         run: npm run build
@@ -130,6 +157,7 @@ jobs:
       # Linux / macOS 打包产物与 SHA256 校验和
       - name: 🗜️ Package Bundle (Linux / macOS)
         if: matrix.archive-type == 'tar-and-zip'
+        shell: bash
         run: |
           VERSION="${{ github.ref_name }}"
           if [ -z "$VERSION" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -159,9 +187,10 @@ jobs:
           fi
           cd ..
 
-      # Windows 打包产物与 SHA256 校验和 (PowerShell 原生支持)
+      # Windows 打包产物与 SHA256 校验和
       - name: 🗜️ Package Bundle (Windows)
         if: matrix.archive-type == 'zip-powershell'
+        shell: pwsh
         run: |
           $VERSION = "${{ github.ref_name }}"
           if ([string]::IsNullOrEmpty($VERSION) -or "${{ github.event_name }}" -eq "workflow_dispatch") {
