@@ -1,4 +1,4 @@
-name: 🌐 Cross-Platform Build & Release
+name: 🌐 Cross-Platform Native Build & Release
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
       release_title:
         description: 'Release 标题 (选填)'
         required: false
-        default: 'NodePulse Release'
+        default: 'NodePulse 原生桌面应用发布'
       is_prerelease:
         description: '是否为预发布版本 (Pre-release)'
         type: boolean
@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   # ========================================================
-  # 阶段 1: 全局静态类型检查 (仅在 Linux 上高效执行一次)
+  # 阶段 1: 全局静态类型检查与代码校验 (Linux 快速执行)
   # ========================================================
   lint-and-typecheck:
     name: 🔍 Type Check & Lint (Ubuntu)
@@ -52,30 +52,33 @@ jobs:
         run: npm run lint
 
   # ========================================================
-  # 阶段 2: 跨平台并行打包构建 (Linux, Windows, macOS)
+  # 阶段 2: 跨平台原生桌面应用并行编译构建 (Windows, macOS, Linux)
   # ========================================================
-  build-matrix:
-    name: 📦 Build (${{ matrix.platform-name }})
+  build-native:
+    name: 📦 Build Native App (${{ matrix.platform-name }})
     needs: lint-and-typecheck
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux x64 环境
-          - os: ubuntu-latest
+          # Linux x64 环境 (Debian/Ubuntu 兼容性最佳的 22.04 LTS)
+          - os: ubuntu-22.04
             platform-name: Linux-x64
-            archive-type: tar-and-zip
+            rust-target: x86_64-unknown-linux-gnu
+            tauri-args: ''
 
-          # Windows x64 环境
+          # Windows x64 环境 (生成 NSIS .exe 安装包、MSI 与独立绿色可执行文件)
           - os: windows-latest
             platform-name: Windows-x64
-            archive-type: zip-powershell
+            rust-target: x86_64-pc-windows-msvc
+            tauri-args: ''
 
-          # macOS Universal 环境
+          # macOS Universal 通用架构环境 (同时支持 Apple Silicon M系列与 Intel Mac)
           - os: macos-latest
             platform-name: macOS-Universal
-            archive-type: tar-and-zip
+            rust-target: aarch64-apple-darwin,x86_64-apple-darwin
+            tauri-args: '--target universal-apple-darwin'
 
     steps:
       - name: 📥 Checkout repository
@@ -86,7 +89,35 @@ jobs:
         with:
           node-version: 22
 
-      # Linux / macOS 纯净安装宿主平台依赖 (消除跨平台 Lockfile 导致的原生模块丢失问题)
+      # 跨平台安装 Rust 编译工具链
+      - name: 🦀 Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      # 启用 Rust 增量编译缓存加速
+      - name: ⚡ Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      # Linux 系统级依赖 (Tauri 2 构建必需的 WebKit 与图形库)
+      - name: 🐧 Install Linux system dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            file \
+            curl \
+            wget || sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev
+
+      # Linux / macOS 纯净安装前端与 Tauri CLI 依赖
       - name: 📦 Install dependencies (Unix)
         if: runner.os != 'Windows'
         shell: bash
@@ -94,7 +125,7 @@ jobs:
           rm -rf node_modules package-lock.json
           npm install --legacy-peer-deps --no-audit --no-fund
 
-      # Windows 纯净安装宿主平台依赖
+      # Windows 纯净安装前端与 Tauri CLI 依赖
       - name: 📦 Install dependencies (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -102,26 +133,58 @@ jobs:
           Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
           npm install --legacy-peer-deps --no-audit --no-fund
 
-      # 清理旧构建缓存 (Unix)
+      # 同步 Release Tag 版本号至 tauri.conf.json (Unix)
+      - name: 🏷️ Sync Version to Tauri Config (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
+          VERSION="${TAG#v}"
+          if [ -n "$VERSION" ] && [ "$VERSION" != "1.0.0" ]; then
+            echo "Updating tauri.conf.json version to $VERSION"
+            sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/g" src-tauri/tauri.conf.json || true
+          fi
+
+      # 同步 Release Tag 版本号至 tauri.conf.json (Windows)
+      - name: 🏷️ Sync Version to Tauri Config (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $TAG = "${{ github.event.inputs.tag_name || github.ref_name }}"
+          $VERSION = $TAG.TrimStart('v')
+          if (![string]::IsNullOrEmpty($VERSION) -and $VERSION -ne "1.0.0") {
+            Write-Host "Updating tauri.conf.json version to $VERSION"
+            (Get-Content src-tauri/tauri.conf.json) -replace '"version":\s*"[^"]*"', "`"version`": `"$VERSION`"" | Set-Content src-tauri/tauri.conf.json
+          }
+
+      # 清理旧构建缓存
       - name: 🔧 Clear cache (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           rm -rf node_modules/.tailwindcss/oxide-cache node_modules/.vite dist || true
 
-      # 清理旧构建缓存 (Windows)
       - name: 🔧 Clear cache (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force -Path "node_modules/.tailwindcss/oxide-cache", "node_modules/.vite", "dist" -ErrorAction SilentlyContinue
 
-      - name: 🏗️ Build production bundle (Vite)
+      # 编译前端静态产物 (Vite)
+      - name: 🏗️ Build frontend bundle
         run: npm run build
 
-      # Linux / macOS 打包产物与 SHA256 校验和
-      - name: 🗜️ Package Bundle (Linux / macOS)
-        if: matrix.archive-type == 'tar-and-zip'
+      # 使用 Tauri 官方 Action 编译原生桌面应用安装包与二进制程序
+      - name: 🦀 Build Tauri Native Application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: ${{ matrix.tauri-args }}
+
+      # 整理归档 Linux / macOS 原生桌面构建产物并生成 SHA256 校验码
+      - name: 🗜️ Collect & Package Native Artifacts (Linux / macOS)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           VERSION="${{ github.event.inputs.tag_name || github.ref_name }}"
@@ -130,31 +193,51 @@ jobs:
           fi
 
           mkdir -p artifacts
-          ZIP_NAME="NodePulse-${VERSION}-${{ matrix.platform-name }}.zip"
-          TAR_NAME="NodePulse-${VERSION}-${{ matrix.platform-name }}.tar.gz"
 
-          # 拷贝便携启动脚本
-          if [ -f scripts/start.sh ]; then
-            cp scripts/start.sh dist/start.sh
-            chmod +x dist/start.sh
+          # 1. 收集 AppImage, deb, dmg 安装包文件
+          find src-tauri/target -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" \) -exec cp -v {} artifacts/ \;
+
+          # 2. 收集并压缩 macOS .app 应用程序包
+          find src-tauri/target -maxdepth 5 -type d -name "*.app" | while read -r app_path; do
+            app_dir="$(dirname "$app_path")"
+            app_name="$(basename "$app_path")"
+            echo "Compressing macOS app: $app_path"
+            tar -czf "artifacts/${app_name%.app}-${VERSION}-${{ matrix.platform-name }}.app.tar.gz" -C "$app_dir" "$app_name"
+          done
+
+          # 3. 收集 Linux 独立绿色运行可执行文件
+          if [ -f src-tauri/target/release/nodepulse ]; then
+            cp src-tauri/target/release/nodepulse artifacts/NodePulse-bin
+            chmod +x artifacts/NodePulse-bin
+            tar -czf "artifacts/NodePulse-${VERSION}-${{ matrix.platform-name }}-portable.tar.gz" -C artifacts NodePulse-bin
+            rm -f artifacts/NodePulse-bin
           fi
 
-          cd dist
-          zip -r "../artifacts/${ZIP_NAME}" ./*
-          tar -czf "../artifacts/${TAR_NAME}" ./*
-          cd ..
+          # 4. 如果是 Linux 节点，额外生成一份通用 Web 静态资源包 (供需要浏览器/自建托管的用户)
+          if [ "${{ matrix.platform-name }}" = "Linux-x64" ]; then
+            if [ -f scripts/start.sh ]; then
+              cp scripts/start.sh dist/start.sh
+              chmod +x dist/start.sh
+            fi
+            (cd dist && zip -r "../artifacts/NodePulse-${VERSION}-Web-Dist.zip" ./*)
+          fi
 
+          # 5. 生成当前平台所有文件的 SHA-256 校验和
           cd artifacts
+          rm -f checksums-*.txt
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "${ZIP_NAME}" "${TAR_NAME}" > "checksums-${{ matrix.platform-name }}.txt"
+            sha256sum * > "checksums-${{ matrix.platform-name }}.txt" 2>/dev/null || true
           else
-            shasum -a 256 "${ZIP_NAME}" "${TAR_NAME}" > "checksums-${{ matrix.platform-name }}.txt"
+            shasum -a 256 * > "checksums-${{ matrix.platform-name }}.txt" 2>/dev/null || true
           fi
           cd ..
 
-      # Windows 打包产物与 SHA256 校验和
-      - name: 🗜️ Package Bundle (Windows)
-        if: matrix.archive-type == 'zip-powershell'
+          echo "=== 收集到的产物列表 ==="
+          ls -la artifacts/
+
+      # 整理归档 Windows 原生桌面构建产物并生成 SHA256 校验码
+      - name: 🗜️ Collect & Package Native Artifacts (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $VERSION = "${{ github.event.inputs.tag_name || github.ref_name }}"
@@ -163,18 +246,36 @@ jobs:
           }
 
           New-Item -ItemType Directory -Force -Path "artifacts"
-          $ZIP_NAME = "NodePulse-${VERSION}-${{ matrix.platform-name }}.zip"
 
-          # 拷贝 Windows 双击启动脚本
-          if (Test-Path "scripts/start.bat") {
-            Copy-Item "scripts/start.bat" -Destination "dist/start.bat" -Force
+          # 1. 拷贝 Tauri 生成的安装包 (.exe 与 .msi)
+          Get-ChildItem -Path "src-tauri/target" -Recurse -Include *.exe, *.msi | Where-Object { $_.FullName -like "*bundle*" } | ForEach-Object {
+            Write-Host "Copying installer: $($_.FullName)"
+            Copy-Item $_.FullName -Destination "artifacts/" -Force
           }
 
-          Compress-Archive -Path "dist/*" -DestinationPath "artifacts/$ZIP_NAME" -Force
+          # 2. 收集 Windows 独立绿色运行二进制程序 (Portable 绿色压缩包)
+          if (Test-Path "src-tauri/target/release/nodepulse.exe") {
+            New-Item -ItemType Directory -Force -Path "portable_temp"
+            Copy-Item "src-tauri/target/release/nodepulse.exe" -Destination "portable_temp/NodePulse.exe" -Force
+            if (Test-Path "scripts/start.bat") {
+              Copy-Item "scripts/start.bat" -Destination "portable_temp/start.bat" -Force
+            }
+            Compress-Archive -Path "portable_temp/*" -DestinationPath "artifacts/NodePulse-$VERSION-Windows-x64-portable.zip" -Force
+            Remove-Item -Recurse -Force "portable_temp"
+          }
 
-          $hash = (Get-FileHash -Algorithm SHA256 "artifacts/$ZIP_NAME").Hash.ToLower()
-          "$hash  $ZIP_NAME" | Out-File -Encoding utf8 "artifacts/checksums-${{ matrix.platform-name }}.txt"
+          # 3. 计算所有生成的产物 SHA-256 校验码
+          $checksumLines = @()
+          Get-ChildItem -Path "artifacts" -File | Where-Object { $_.Name -notlike "checksums-*" } | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+            $checksumLines += "$hash  $($_.Name)"
+          }
+          $checksumLines | Out-File -Encoding utf8 "artifacts/checksums-${{ matrix.platform-name }}.txt"
 
+          Write-Host "=== 收集到的 Windows 产物列表 ==="
+          Get-ChildItem "artifacts"
+
+      # 上传当前平台的原生应用构建产物
       - name: 📤 Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -184,11 +285,11 @@ jobs:
           retention-days: 5
 
   # ========================================================
-  # 阶段 3: 汇总全平台产物并发布 GitHub Release
+  # 阶段 3: 汇总全平台原生应用产物并统一发布 GitHub Release
   # ========================================================
   publish-release:
-    name: 🚀 Publish Unified Release
-    needs: build-matrix
+    name: 🚀 Publish Unified Native Release
+    needs: build-native
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout repository
@@ -196,6 +297,7 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 确保 Git Tag 存在 (针对手动 workflow_dispatch 触发)
       - name: 🏷️ Ensure Git Tag Exists (for workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -207,24 +309,40 @@ jobs:
             git push origin "$TAG" || true
           fi
 
+      # 下载全部平台构建出的原生应用资产
       - name: 📥 Download All Platform Artifacts
         uses: actions/download-artifact@v4
         with:
           path: release_assets
           merge-multiple: true
 
-      - name: 📋 Merge Checksums & Organize Assets
+      # 整合 Checksum 并分类整理待发布文件
+      - name: 📋 Merge Checksums & Organize Release Assets
         run: |
           mkdir -p final_release
           cd release_assets
+
+          # 合并全平台 SHA-256 校验和到统一的 checksums.txt
           cat checksums-*.txt > ../final_release/checksums.txt 2>/dev/null || true
           rm -f checksums-*.txt
-          find . -maxdepth 2 -type f \( -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} ../final_release/ \;
+
+          # 归集所有安装包与便携包 (.exe, .msi, .dmg, .app.tar.gz, .AppImage, .deb, .zip, .tar.gz)
+          find . -maxdepth 2 -type f \( \
+            -name "*.exe" -o \
+            -name "*.msi" -o \
+            -name "*.dmg" -o \
+            -name "*.AppImage" -o \
+            -name "*.deb" -o \
+            -name "*.zip" -o \
+            -name "*.tar.gz" \
+          \) -exec cp -v {} ../final_release/ \;
+
           cd ..
 
-          echo "=== 待发布的文件列表 ==="
+          echo "=== 准备发布到 GitHub Release 的完整原生应用列表 ==="
           ls -la final_release/
 
+      # 发布统一 GitHub Release 并附带原生应用清晰下载指南
       - name: 🚀 Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -233,6 +351,31 @@ jobs:
           draft: false
           prerelease: ${{ github.event.inputs.is_prerelease || false }}
           generate_release_notes: true
+          body: |
+            ## 🌐 NodePulse 原生桌面客户端发布 (Native Desktop Release)
+
+            本版本为跨平台原生桌面应用程序，提供出色的本地性能、系统托盘以及底层网络诊断能力。
+
+            ### 📦 平台安装包下载指引：
+
+            - 🪟 **Windows (x64)**：
+              - **安装包 (推荐)**：下载 `NodePulse_*_x64-setup.exe` (NSIS) 或 `NodePulse_*_x64_*.msi` 双击安装。
+              - **绿色便携包**：下载 `NodePulse-*-Windows-x64-portable.zip` 解压即用。
+
+            - 🍎 **macOS (Universal - Apple Silicon & Intel)**：
+              - **安装包 (推荐)**：下载 `NodePulse_*_universal.dmg` (或 `.dmg`)，拖移至 Applications 即可运行。
+              - **App 包**：下载 `NodePulse-*-macOS-Universal.app.tar.gz` 解压使用。
+
+            - 🐧 **Linux (x64)**：
+              - **免安装 AppImage (推荐)**：下载 `NodePulse_*_amd64.AppImage`，添加执行权限后双击运行 (`chmod +x *.AppImage`)。
+              - **Debian / Ubuntu 安装包**：下载 `nodepulse_*_amd64.deb` (`sudo dpkg -i nodepulse_*.deb`)。
+              - **便携压缩包**：下载 `NodePulse-*-Linux-x64-portable.tar.gz`。
+
+            - 🌐 **Web 纯静态版本**：
+              - 下载 `NodePulse-*-Web-Dist.zip`，解压后可直接部署至任何静态托管平台或局域网 Nginx / Caddy。
+
+            ---
+            *所有二进制文件的安全完整性哈希已统一收录在 `checksums.txt` 中。*
           files: |
             final_release/*
         env:
