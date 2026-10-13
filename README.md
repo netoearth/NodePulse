@@ -32,9 +32,9 @@
 | **Windows** | `.exe` (NSIS) / `.msi` | 适用于 Windows 10 / 11 64 位原生安装包 |
 | **Linux** | `.deb` / `.AppImage` | 适配主流发行版（Ubuntu/Debian/Arch 等），集成 WebKitGTK 4.1 运行时 |
 
-### 🚀 触发桌面端全自动编译与发布
+### 🚀 触发全自动跨平台编译与发布
 
-本项目已配置独立 CI/CD 流水线（`.github/workflows/tauri-release.yml`）：
+本项目已配置独立 CI/CD 流水线（`.github/workflows/release.yml`）：
 
 1. **推送版本 Tag（推荐）**：
    ```bash
@@ -43,8 +43,8 @@
    ```
 2. **在 GitHub 页面手动触发**：
    - 进入仓库 **Actions** 选项卡。
-   - 选择 **🚀 Tauri v2 Desktop Cross-Platform Release** 工作流。
-   - 点击 **Run workflow**，输入版本号（例如 `v1.0.0`）及发布说明即可全自动并行编译并创建 Releases。
+   - 选择 **🌐 Cross-Platform Build & Release** 工作流。
+   - 点击 **Run workflow**，输入版本号 Tag（例如 `v1.0.0`）及发布标题即可全自动并行编译并创建 GitHub Releases。
 
 ---
 

@@ -14,7 +14,7 @@ on:
       release_title:
         description: 'Release 标题 (选填)'
         required: false
-        default: 'NovaStream Release'
+        default: 'NodePulse Release'
       is_prerelease:
         description: '是否为预发布版本 (Pre-release)'
         type: boolean
@@ -45,15 +45,8 @@ jobs:
       - name: 📦 Install dependencies
         shell: bash
         run: |
-          if [ -f package-lock.json ]; then
-            if ! npm ci; then
-              echo "⚠️ npm ci failed, falling back to clean npm install..."
-              rm -rf node_modules package-lock.json
-              npm install --legacy-peer-deps
-            fi
-          else
-            npm install --legacy-peer-deps
-          fi
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: 🔍 Type check (tsc --noEmit)
         run: npm run lint
@@ -73,23 +66,16 @@ jobs:
           - os: ubuntu-latest
             platform-name: Linux-x64
             archive-type: tar-and-zip
-            shell: bash
 
           # Windows x64 环境
           - os: windows-latest
             platform-name: Windows-x64
             archive-type: zip-powershell
-            shell: pwsh
 
           # macOS Universal 环境
           - os: macos-latest
             platform-name: macOS-Universal
             archive-type: tar-and-zip
-            shell: bash
-
-    defaults:
-      run:
-        shell: ${{ matrix.shell }}
 
     steps:
       - name: 📥 Checkout repository
@@ -100,67 +86,35 @@ jobs:
         with:
           node-version: 22
 
-      # Linux / macOS 依赖安装
+      # Linux / macOS 纯净安装宿主平台依赖 (消除跨平台 Lockfile 导致的原生模块丢失问题)
       - name: 📦 Install dependencies (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          if [ -f package-lock.json ]; then
-            if ! npm ci; then
-              echo "⚠️ npm ci failed, falling back to clean npm install..."
-              rm -rf node_modules package-lock.json
-              npm install --legacy-peer-deps
-            fi
-          else
-            npm install --legacy-peer-deps
-          fi
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps --no-audit --no-fund
 
-          # macOS (Apple Silicon arm64) 显式安装 Rolldown 原生绑定
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            npm install @rolldown/binding-darwin-arm64 --no-save --legacy-peer-deps --force || true
-          fi
-
-          npm rebuild @tailwindcss/oxide lightningcss rolldown || true
-
-      # Windows 依赖安装
+      # Windows 纯净安装宿主平台依赖
       - name: 📦 Install dependencies (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          if (Test-Path "package-lock.json") {
-            try {
-              npm ci
-            } catch {
-              Write-Host "⚠️ npm ci failed, falling back to clean npm install..."
-              Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
-              npm install --legacy-peer-deps
-            }
-          } else {
-            npm install --legacy-peer-deps
-          }
+          Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
+          npm install --legacy-peer-deps --no-audit --no-fund
 
-          # 显式安装 Windows 平台的原生绑定 (解决 Vite 8 / Tailwind v4 在 Windows 缺失原生 .node 模块的问题)
-          npm install @rolldown/binding-win32-x64-msvc --no-save --legacy-peer-deps --force --verbose
-          npm install lightningcss lightningcss-win32-x64-msvc @tailwindcss/oxide-win32-x64-msvc --no-save --legacy-peer-deps --force --verbose
-
-          npm rebuild @tailwindcss/oxide lightningcss rolldown --verbose
-          npm rebuild --platform=win32 --arch=x64 --verbose
-
-      # 跨平台强制 Rebuild 原生绑定
-      - name: 🔧 Rebuild native modules (Unix)
+      # 清理旧构建缓存 (Unix)
+      - name: 🔧 Clear cache (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          rm -rf node_modules/.tailwindcss/oxide-cache node_modules/.vite || true
-          npm rebuild @tailwindcss/oxide lightningcss rolldown || true
-          npm rebuild rolldown --force || true
+          rm -rf node_modules/.tailwindcss/oxide-cache node_modules/.vite dist || true
 
-      - name: 🔧 Rebuild native modules (Windows)
+      # 清理旧构建缓存 (Windows)
+      - name: 🔧 Clear cache (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Remove-Item -Recurse -Force -Path "node_modules/.tailwindcss/oxide-cache", "node_modules/.vite" -ErrorAction SilentlyContinue
-          npm rebuild @tailwindcss/oxide lightningcss rolldown --verbose
+          Remove-Item -Recurse -Force -Path "node_modules/.tailwindcss/oxide-cache", "node_modules/.vite", "dist" -ErrorAction SilentlyContinue
 
       - name: 🏗️ Build production bundle (Vite)
         run: npm run build
@@ -170,14 +124,14 @@ jobs:
         if: matrix.archive-type == 'tar-and-zip'
         shell: bash
         run: |
-          VERSION="${{ github.ref_name }}"
-          if [ -z "$VERSION" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.tag_name }}"
+          VERSION="${{ github.event.inputs.tag_name || github.ref_name }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="v1.0.0"
           fi
 
           mkdir -p artifacts
-          ZIP_NAME="NovaStream-${VERSION}-${{ matrix.platform-name }}.zip"
-          TAR_NAME="NovaStream-${VERSION}-${{ matrix.platform-name }}.tar.gz"
+          ZIP_NAME="NodePulse-${VERSION}-${{ matrix.platform-name }}.zip"
+          TAR_NAME="NodePulse-${VERSION}-${{ matrix.platform-name }}.tar.gz"
 
           # 拷贝便携启动脚本
           if [ -f scripts/start.sh ]; then
@@ -203,13 +157,13 @@ jobs:
         if: matrix.archive-type == 'zip-powershell'
         shell: pwsh
         run: |
-          $VERSION = "${{ github.ref_name }}"
-          if ([string]::IsNullOrEmpty($VERSION) -or "${{ github.event_name }}" -eq "workflow_dispatch") {
-            $VERSION = "${{ github.event.inputs.tag_name }}"
+          $VERSION = "${{ github.event.inputs.tag_name || github.ref_name }}"
+          if ([string]::IsNullOrEmpty($VERSION)) {
+            $VERSION = "v1.0.0"
           }
 
           New-Item -ItemType Directory -Force -Path "artifacts"
-          $ZIP_NAME = "NovaStream-${VERSION}-${{ matrix.platform-name }}.zip"
+          $ZIP_NAME = "NodePulse-${VERSION}-${{ matrix.platform-name }}.zip"
 
           # 拷贝 Windows 双击启动脚本
           if (Test-Path "scripts/start.bat") {
@@ -250,7 +204,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if ! git rev-parse "$TAG" >/dev/null 2>&1; then
             git tag -a "$TAG" -m "Release $TAG"
-            git push origin "$TAG"
+            git push origin "$TAG" || true
           fi
 
       - name: 📥 Download All Platform Artifacts
@@ -265,7 +219,7 @@ jobs:
           cd release_assets
           cat checksums-*.txt > ../final_release/checksums.txt 2>/dev/null || true
           rm -f checksums-*.txt
-          mv NovaStream-* ../final_release/ 2>/dev/null || true
+          find . -maxdepth 2 -type f \( -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} ../final_release/ \;
           cd ..
 
           echo "=== 待发布的文件列表 ==="
@@ -274,8 +228,8 @@ jobs:
       - name: 🚀 Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || github.event.inputs.tag_name }}
-          name: ${{ github.event.inputs.release_title || github.ref_name || github.event.inputs.tag_name }}
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: ${{ github.event.inputs.release_title || github.event.inputs.tag_name || github.ref_name }}
           draft: false
           prerelease: ${{ github.event.inputs.is_prerelease || false }}
           generate_release_notes: true
